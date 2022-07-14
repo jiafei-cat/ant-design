@@ -52,6 +52,9 @@ export interface AffixState {
   prevTarget: Window | HTMLElement | null;
 }
 
+/**
+ * 流程 -> 
+ */
 class Affix extends React.Component<InternalAffixProps, AffixState> {
   static contextType = ConfigContext;
 
@@ -69,6 +72,7 @@ class Affix extends React.Component<InternalAffixProps, AffixState> {
 
   context: ConfigConsumerProps;
 
+  /** 获取监听元素，没有的话会取window */
   private getTargetFunc() {
     const { getTargetContainer } = this.context;
     const { target } = this.props;
@@ -86,9 +90,12 @@ class Affix extends React.Component<InternalAffixProps, AffixState> {
     if (targetFunc) {
       // [Legacy] Wait for parent component ref has its value.
       // We should use target as directly element instead of function which makes element check hard.
+      // 这里为了等待异步的dom，使用定时器做异步获取container
       this.timeout = setTimeout(() => {
+        /** 添加当前组件的触发和监听target - 会触发lazyUpdatePosition */
         addObserveTarget(targetFunc(), this);
-        // Mock Event object.
+        // Mock Event object. 
+        // 更新初始状态去触发componentDidUpdate
         this.updatePosition();
       });
     }
@@ -99,6 +106,7 @@ class Affix extends React.Component<InternalAffixProps, AffixState> {
     const targetFunc = this.getTargetFunc();
     const newTarget = targetFunc?.() || null;
 
+    /** 第一次肯定是不同的，后续有可能target变化，所以这里得重新监听 */
     if (prevTarget !== newTarget) {
       removeObserveTarget(this);
       if (newTarget) {
@@ -110,14 +118,14 @@ class Affix extends React.Component<InternalAffixProps, AffixState> {
       // eslint-disable-next-line react/no-did-update-set-state
       this.setState({ prevTarget: newTarget });
     }
-
+    /** offsetTop/offsetBottom props变化时重新更新位置 */
     if (
       prevProps.offsetTop !== this.props.offsetTop ||
       prevProps.offsetBottom !== this.props.offsetBottom
     ) {
       this.updatePosition();
     }
-
+    /** 每次自身state/props改变都会调用measure */
     this.measure();
   }
 
@@ -129,6 +137,7 @@ class Affix extends React.Component<InternalAffixProps, AffixState> {
     (this.lazyUpdatePosition as any).cancel();
   }
 
+  /** 处理参数offsetTop， 返回值可能是undefined*/
   getOffsetTop = () => {
     const { offsetBottom, offsetTop } = this.props;
     return offsetBottom === undefined && offsetTop === undefined ? 0 : offsetTop;
@@ -149,6 +158,7 @@ class Affix extends React.Component<InternalAffixProps, AffixState> {
     const { status, lastAffix } = this.state;
     const { onChange } = this.props;
     const targetFunc = this.getTargetFunc();
+    /** 确保当前 组件状态/target/固定元素/占位元素 都存在 */
     if (status !== AffixStatus.Prepare || !this.fixedNode || !this.placeholderNode || !targetFunc) {
       return;
     }
@@ -164,6 +174,7 @@ class Affix extends React.Component<InternalAffixProps, AffixState> {
     const newState: Partial<AffixState> = {
       status: AffixStatus.None,
     };
+
     const targetRect = getTargetRect(targetNode);
     const placeholderReact = getTargetRect(this.placeholderNode);
     const fixedTop = getFixedTop(placeholderReact, targetRect, offsetTop);
@@ -176,6 +187,7 @@ class Affix extends React.Component<InternalAffixProps, AffixState> {
         width: placeholderReact.width,
         height: placeholderReact.height,
       };
+      /** placeholderReact 其实是父级的视图信息 */
       newState.placeholderStyle = {
         width: placeholderReact.width,
         height: placeholderReact.height,
@@ -187,12 +199,14 @@ class Affix extends React.Component<InternalAffixProps, AffixState> {
         width: placeholderReact.width,
         height: placeholderReact.height,
       };
+      /** placeholderReact 其实是父级的视图信息 */
       newState.placeholderStyle = {
         width: placeholderReact.width,
         height: placeholderReact.height,
       };
     }
 
+    /** 通过lastAffix记录当前组件状态和上一次状态，以便触发props.onChange */
     newState.lastAffix = !!newState.affixStyle;
     if (onChange && lastAffix !== newState.lastAffix) {
       onChange(newState.lastAffix);
@@ -202,6 +216,7 @@ class Affix extends React.Component<InternalAffixProps, AffixState> {
   };
 
   // @ts-ignore TS6133
+  /** 计算位置的前置参数准备 */
   prepareMeasure = () => {
     // event param is used before. Keep compatible ts define here.
     this.setState({
@@ -227,7 +242,7 @@ class Affix extends React.Component<InternalAffixProps, AffixState> {
   lazyUpdatePosition() {
     const targetFunc = this.getTargetFunc();
     const { affixStyle } = this.state;
-
+    // 在计算位置前，先计算一次，排除掉固定状态未发生改变的情况
     // Check position change before measure to make Safari smooth
     if (targetFunc && affixStyle) {
       const offsetTop = this.getOffsetTop();
